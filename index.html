@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>ランドマークカメラ</title>
+<title>めめカメラ</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<meta name="theme-color" content="#0c0e12">
+<meta name="theme-color" content="#16213e">
 <style>
   :root {
-    --ink: #f4efe6;
-    --ink-dim: rgba(244,239,230,.62);
-    --veil: rgba(12,14,18,.58);
-    --mark: #f2c14e;
+    --ink: #f0f4fa;
+    --ink-dim: rgba(240,244,250,.62);
+    --veil: rgba(22,33,62,.62);
+    --mark: #6ab0e8;
     --ok: #9fd8a5;
     --warn: #f0906b;
     --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
@@ -55,7 +55,7 @@
 
   /* 起動画面 */
   #gate {
-    position: fixed; inset: 0; background: #0c0e12; display: flex; flex-direction: column;
+    position: fixed; inset: 0; background: #16213e; display: flex; flex-direction: column;
     justify-content: flex-end; padding: 32px 28px calc(env(safe-area-inset-bottom) + 40px);
   }
   #gate h1 { font-size: 30px; font-weight: 300; line-height: 1.25; letter-spacing: .02em; }
@@ -127,7 +127,7 @@
 </div>
 
 <div id="gate">
-  <h1>向けた先にある、<b>都心のランドマーク。</b></h1>
+  <h1>めめカメラ<b>🐦 向けた先のランドマーク。</b></h1>
   <p>カメラ・現在地・方位センサーを使います。すべて端末内で処理し、どこにも送信しません。屋外の開けた場所で、端末を縦に構えてください。</p>
   <button id="start">カメラを起動する</button>
   <div id="gate-err" role="alert"></div>
@@ -292,9 +292,9 @@ function frame() {
 
     ctx.globalAlpha = alpha;
     // 縦のガイド線とマーカー
-    ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "#6ab0e8"; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, rect.y + rect.h); ctx.lineTo(x, y); ctx.stroke();
-    ctx.fillStyle = "#f2c14e";
+    ctx.fillStyle = "#6ab0e8";
     ctx.beginPath(); ctx.arc(x, y, 4 * scale + 1.5, 0, Math.PI * 2); ctx.fill();
     // ラベル
     ctx.fillStyle = "rgba(12,14,18,.62)";
@@ -321,7 +321,7 @@ function drawRadar(p, hdg) {
   if (hdg == null) return;
   // 視野のくさび（進行方向が上）
   const half = rad(settings.fov / 2);
-  rctx.fillStyle = "rgba(242,193,78,.18)";
+  rctx.fillStyle = "rgba(106,176,232,.18)";
   rctx.beginPath(); rctx.moveTo(c, c); rctx.arc(c, c, rr, -Math.PI / 2 - half, -Math.PI / 2 + half); rctx.closePath(); rctx.fill();
   // 北の印
   const n = rad(-hdg);
@@ -336,7 +336,7 @@ function drawRadar(p, hdg) {
     const t = Math.min(1, Math.log10(1 + dist / 300) / Math.log10(1 + maxD / 300));
     const a = rad(bearing - hdg);
     const x = c + Math.sin(a) * rr * t, y = c - Math.cos(a) * rr * t;
-    rctx.fillStyle = L.always ? "#f4efe6" : "#f2c14e";
+    rctx.fillStyle = L.always ? "#f0f4fa" : "#6ab0e8";
     rctx.beginPath(); rctx.arc(x, y, 5, 0, Math.PI * 2); rctx.fill();
   }
   rctx.fillStyle = "#f4efe6"; rctx.beginPath(); rctx.arc(c, c, 4, 0, Math.PI * 2); rctx.fill();

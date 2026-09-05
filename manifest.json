@@ -1,11 +1,11 @@
 {
-  "name": "ランドマークカメラ",
-  "short_name": "LMカメラ",
+  "name": "めめカメラ",
+  "short_name": "めめカメラ",
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0c0e12",
-  "theme_color": "#0c0e12",
+  "background_color": "#16213e",
+  "theme_color": "#16213e",
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
