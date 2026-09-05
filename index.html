@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ランドマークカメラ</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#0c0e12">
+<style>
+  :root {
+    --ink: #f4efe6;
+    --ink-dim: rgba(244,239,230,.62);
+    --veil: rgba(12,14,18,.58);
+    --mark: #f2c14e;
+    --ok: #9fd8a5;
+    --warn: #f0906b;
+    --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: #000; color: var(--ink); font-family: var(--font); overflow: hidden; }
+  #cam { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  #hud { position: fixed; inset: 0; width: 100%; height: 100%; }
+
+  /* 上部：方位テープ */
+  #top {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: calc(env(safe-area-inset-top) + 10px) 16px 8px;
+    background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0));
+    pointer-events: none;
+  }
+  #heading { font-size: 34px; font-weight: 300; letter-spacing: .04em; line-height: 1; font-variant-numeric: tabular-nums; }
+  #heading small { font-size: 14px; font-weight: 400; margin-left: 6px; color: var(--ink-dim); }
+  #status { margin-top: 6px; font-size: 12px; color: var(--ink-dim); display: flex; gap: 14px; flex-wrap: wrap; }
+  #status .bad { color: var(--warn); }
+  #status .good { color: var(--ok); }
+
+  /* 下部：レーダーと設定ボタン */
+  #bottom {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 12px 16px calc(env(safe-area-inset-bottom) + 14px);
+    display: flex; align-items: flex-end; justify-content: space-between;
+    background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.5));
+    pointer-events: none;
+  }
+  #radar { width: 124px; height: 124px; pointer-events: auto; }
+  #gear {
+    pointer-events: auto; width: 48px; height: 48px; border-radius: 50%;
+    border: 1px solid rgba(244,239,230,.35); background: var(--veil); color: var(--ink);
+    font-size: 20px; display: grid; place-items: center; cursor: pointer;
+  }
+  #gear:focus-visible { outline: 2px solid var(--mark); }
+
+  /* 起動画面 */
+  #gate {
+    position: fixed; inset: 0; background: #0c0e12; display: flex; flex-direction: column;
+    justify-content: flex-end; padding: 32px 28px calc(env(safe-area-inset-bottom) + 40px);
+  }
+  #gate h1 { font-size: 30px; font-weight: 300; line-height: 1.25; letter-spacing: .02em; }
+  #gate h1 b { display: block; font-weight: 600; color: var(--mark); }
+  #gate p { margin-top: 18px; font-size: 14px; line-height: 1.7; color: var(--ink-dim); max-width: 34em; }
+  #start {
+    margin-top: 28px; width: 100%; padding: 18px; border: 0; border-radius: 14px;
+    background: var(--mark); color: #1a1508; font: inherit; font-size: 17px; font-weight: 600; cursor: pointer;
+  }
+  #start:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  #gate-err { margin-top: 14px; font-size: 13px; color: var(--warn); line-height: 1.6; min-height: 1.6em; }
+
+  /* 設定パネル */
+  #panel {
+    position: fixed; left: 0; right: 0; bottom: 0; transform: translateY(105%);
+    transition: transform .25s ease; background: rgba(14,16,20,.94); color: var(--ink);
+    padding: 20px 20px calc(env(safe-area-inset-bottom) + 24px); border-radius: 18px 18px 0 0;
+    border-top: 1px solid rgba(244,239,230,.15); max-height: 80vh; overflow: auto;
+  }
+  #panel.open { transform: translateY(0); }
+  #panel h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  #panel h2 button { border: 0; background: none; color: var(--ink-dim); font: inherit; font-size: 14px; cursor: pointer; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(244,239,230,.08); }
+  .row label { font-size: 14px; }
+  .row .val { font-size: 13px; color: var(--mark); font-variant-numeric: tabular-nums; }
+  .row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--mark); }
+  .row .hint { grid-column: 1 / -1; font-size: 12px; color: var(--ink-dim); line-height: 1.5; }
+  .row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--mark); }
+  @media (prefers-reduced-motion: reduce) { #panel { transition: none; } }
+</style>
+</head>
+<body>
+
+<video id="cam" autoplay muted playsinline></video>
+<canvas id="hud"></canvas>
+
+<div id="top">
+  <div id="heading">---<small>°</small></div>
+  <div id="status"><span id="st-gps">位置：待機中</span><span id="st-cmp">方位：待機中</span><span id="st-n"></span></div>
+</div>
+
+<div id="bottom">
+  <canvas id="radar" width="248" height="248"></canvas>
+  <button id="gear" aria-label="設定を開く">⚙</button>
+</div>
+
+<div id="panel" aria-hidden="true">
+  <h2>設定 <button id="close">閉じる</button></h2>
+  <div class="row">
+    <label for="radius">表示する距離</label><span class="val" id="radius-v"></span>
+    <input type="range" id="radius" min="1" max="30" step="1">
+    <span class="hint">富士山はこの設定に関わらず常に表示します。</span>
+  </div>
+  <div class="row">
+    <label for="fov">カメラの横画角</label><span class="val" id="fov-v"></span>
+    <input type="range" id="fov" min="35" max="90" step="1">
+    <span class="hint">ピンが実物より左右に広がって見えるなら小さく、詰まって見えるなら大きく。</span>
+  </div>
+  <div class="row">
+    <label for="offset">方位の補正</label><span class="val" id="offset-v"></span>
+    <input type="range" id="offset" min="-45" max="45" step="1">
+    <span class="hint">見えているランドマークにピンが重なるまで動かしてください。都心では鉄骨や車で狂いやすく、8の字に振ると直ることがあります。</span>
+  </div>
+  <div class="row">
+    <label for="demo">東京駅にいることにする（GPSを使わない）</label>
+    <input type="checkbox" id="demo">
+    <span class="hint">屋内やPCでの動作確認用。</span>
+  </div>
+</div>
+
+<div id="gate">
+  <h1>向けた先にある、<b>都心のランドマーク。</b></h1>
+  <p>カメラ・現在地・方位センサーを使います。すべて端末内で処理し、どこにも送信しません。屋外の開けた場所で、端末を縦に構えてください。</p>
+  <button id="start">カメラを起動する</button>
+  <div id="gate-err" role="alert"></div>
+</div>
+
+<script>
+// ---------- ランドマーク（内蔵リスト。座標はおおよそ、高さはm） ----------
+const LANDMARKS = [
+  { name: "東京スカイツリー", lat: 35.7101, lon: 139.8107, h: 634 },
+  { name: "東京タワー", lat: 35.6586, lon: 139.7454, h: 333 },
+  { name: "東京駅 丸の内駅舎", lat: 35.6812, lon: 139.7671, h: 46 },
+  { name: "東京都庁", lat: 35.6896, lon: 139.6921, h: 243 },
+  { name: "六本木ヒルズ", lat: 35.6605, lon: 139.7292, h: 238 },
+  { name: "麻布台ヒルズ", lat: 35.6603, lon: 139.7411, h: 325 },
+  { name: "渋谷スクランブルスクエア", lat: 35.6584, lon: 139.7022, h: 230 },
+  { name: "新宿住友ビル", lat: 35.6912, lon: 139.6934, h: 210 },
+  { name: "サンシャイン60", lat: 35.7291, lon: 139.7188, h: 240 },
+  { name: "東京ドーム", lat: 35.7056, lon: 139.7519, h: 56 },
+  { name: "国立競技場", lat: 35.6778, lon: 139.7146, h: 47 },
+  { name: "レインボーブリッジ", lat: 35.6365, lon: 139.7634, h: 127 },
+  { name: "東京ゲートブリッジ", lat: 35.6076, lon: 139.8291, h: 88 },
+  { name: "フジテレビ本社", lat: 35.6267, lon: 139.7744, h: 123 },
+  { name: "皇居", lat: 35.6852, lon: 139.7528, h: 20 },
+  { name: "明治神宮", lat: 35.6764, lon: 139.6993, h: 20 },
+  { name: "浅草寺 五重塔", lat: 35.7148, lon: 139.7967, h: 53 },
+  { name: "両国国技館", lat: 35.6969, lon: 139.7933, h: 40 },
+  { name: "羽田空港", lat: 35.5494, lon: 139.7798, h: 30 },
+  { name: "富士山", lat: 35.3606, lon: 138.7274, h: 3776, always: true },
+];
+
+// ---------- 設定（端末内保存） ----------
+const DEFAULTS = { radius: 20, fov: 50, offset: 0, demo: false };
+const settings = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("lmcam.settings") || "{}"));
+function saveSettings() { localStorage.setItem("lmcam.settings", JSON.stringify(settings)); }
+
+// ---------- 状態 ----------
+const DEMO_POS = { lat: 35.6812, lon: 139.7671, acc: 0, alt: null };
+let pos = null;           // {lat, lon, acc}
+let rawHeading = null;    // センサー値（度）
+let heading = null;       // 平滑化後（度）
+let pitch = 0;            // 上下の傾き（度、水平=0）
+let cmpSource = "";
+
+// ---------- 幾何 ----------
+const R = 6371000;
+const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+function distBearing(a, b) {
+  const φ1 = rad(a.lat), φ2 = rad(b.lat), Δφ = rad(b.lat - a.lat), Δλ = rad(b.lon - a.lon);
+  const s = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
+  const d = 2 * R * Math.asin(Math.sqrt(s));
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return { dist: d, bearing: (deg(Math.atan2(y, x)) + 360) % 360 };
+}
+const wrap180 = a => ((a + 540) % 360) - 180;
+const fmtDist = m => m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(m < 10000 ? 1 : 0) + " km";
+
+// ---------- センサー ----------
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === "number") { h = e.webkitCompassHeading; cmpSource = "iOS"; }
+  else if (e.alpha != null) { h = 360 - e.alpha; cmpSource = e.absolute ? "絶対" : "相対"; }
+  if (h == null) return;
+  const so = (screen.orientation && typeof screen.orientation.angle === "number") ? screen.orientation.angle : (window.orientation || 0);
+  rawHeading = (h + so + 360) % 360;
+  if (typeof e.beta === "number") pitch = Math.max(-60, Math.min(60, e.beta - 90));
+}
+async function startSensors() {
+  // iOS 13+ は明示的な許可が必要（ユーザー操作の中で呼ぶ）
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    const r = await DeviceOrientationEvent.requestPermission();
+    if (r !== "granted") throw new Error("方位センサーの利用が許可されませんでした。Safariの設定から許可してください。");
+  }
+  if ("ondeviceorientationabsolute" in window) window.addEventListener("deviceorientationabsolute", onOrientation, true);
+  else window.addEventListener("deviceorientation", onOrientation, true);
+}
+async function startCamera() {
+  const v = document.getElementById("cam");
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }, audio: false });
+  v.srcObject = stream;
+  await v.play();
+}
+function startGeo() {
+  const el = document.getElementById("st-gps");
+  if (!("geolocation" in navigator)) { el.textContent = "位置：非対応"; el.className = "bad"; return; }
+  navigator.geolocation.watchPosition(p => {
+    pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy };
+    el.textContent = "位置：±" + Math.round(pos.acc) + " m";
+    el.className = pos.acc <= 30 ? "good" : "";
+  }, err => {
+    el.textContent = "位置：取得できません（" + err.message + "）"; el.className = "bad";
+  }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
+}
+
+// ---------- 描画 ----------
+const hud = document.getElementById("hud"), ctx = hud.getContext("2d");
+const radar = document.getElementById("radar"), rctx = radar.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  hud.width = W * DPR; hud.height = H * DPR; hud.style.width = W + "px"; hud.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize); resize();
+
+function frame() {
+  requestAnimationFrame(frame);
+  // 方位の平滑化（0/360の境界を跨いでも滑らかに）
+  if (rawHeading != null) {
+    if (heading == null) heading = rawHeading;
+    else heading = (heading + wrap180(rawHeading - heading) * 0.18 + 360) % 360;
+  }
+  const p = settings.demo ? DEMO_POS : pos;
+  const hdg = heading == null ? null : (heading + settings.offset + 360) % 360;
+
+  document.getElementById("heading").innerHTML = (hdg == null ? "---" : String(Math.round(hdg)).padStart(3, "0")) + "<small>°</small>";
+  const cmpEl = document.getElementById("st-cmp");
+  cmpEl.textContent = hdg == null ? "方位：待機中" : "方位：" + cmpSource + (cmpSource === "相対" ? "（北が不正確）" : "");
+  cmpEl.className = cmpSource === "相対" ? "bad" : (hdg == null ? "" : "good");
+  if (settings.demo) { const g = document.getElementById("st-gps"); g.textContent = "位置：東京駅（テスト）"; g.className = ""; }
+
+  ctx.clearRect(0, 0, W, H);
+  drawRadar(p, hdg);
+  if (!p || hdg == null) return;
+
+  const hFOV = settings.fov, vFOV = hFOV * H / W;
+  const items = [];
+  for (const L of LANDMARKS) {
+    const { dist, bearing } = distBearing(p, L);
+    if (!L.always && dist > settings.radius * 1000) continue;
+    const dx = wrap180(bearing - hdg);
+    const elev = deg(Math.atan2(L.h, dist));
+    items.push({ L, dist, bearing, dx, elev });
+  }
+  items.sort((a, b) => a.dist - b.dist);
+  document.getElementById("st-n").textContent = items.length + " 件が範囲内";
+
+  const placed = [];
+  ctx.textBaseline = "middle";
+  for (const it of items) {
+    if (Math.abs(it.dx) > hFOV / 2 + 8) continue;
+    const x = W / 2 + it.dx / hFOV * W;
+    let y = H / 2 - (it.elev - pitch) / vFOV * H;
+    y = Math.max(H * 0.14, Math.min(H * 0.78, y));
+    const far = Math.min(1, it.dist / 30000);
+    const scale = 1.05 - far * 0.45;
+    const alpha = 1 - far * 0.45;
+    const fs = Math.round(15 * scale);
+    ctx.font = `600 ${fs}px ${getComputedStyle(document.body).fontFamily}`;
+    const tw = ctx.measureText(it.L.name).width;
+    const bw = tw + 22, bh = fs * 2.4;
+
+    // 重なり回避：手前のピンと重なるなら上へずらす
+    let rect = { x: x - bw / 2, y: y - 22 - bh, w: bw, h: bh };
+    for (let k = 0; k < 8; k++) {
+      const hit = placed.some(r => rect.x < r.x + r.w && rect.x + rect.w > r.x && rect.y < r.y + r.h && rect.y + rect.h > r.y);
+      if (!hit) break;
+      rect.y -= bh + 6;
+    }
+    placed.push(rect);
+
+    ctx.globalAlpha = alpha;
+    // 縦のガイド線とマーカー
+    ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, rect.y + rect.h); ctx.lineTo(x, y); ctx.stroke();
+    ctx.fillStyle = "#f2c14e";
+    ctx.beginPath(); ctx.arc(x, y, 4 * scale + 1.5, 0, Math.PI * 2); ctx.fill();
+    // ラベル
+    ctx.fillStyle = "rgba(12,14,18,.62)";
+    roundRect(rect.x, rect.y, rect.w, rect.h, 8); ctx.fill();
+    ctx.fillStyle = "#f4efe6"; ctx.textAlign = "center";
+    ctx.fillText(it.L.name, x, rect.y + bh * 0.36);
+    ctx.font = `400 ${Math.round(fs * 0.78)}px ${getComputedStyle(document.body).fontFamily}`;
+    ctx.fillStyle = "rgba(244,239,230,.7)";
+    ctx.fillText(fmtDist(it.dist), x, rect.y + bh * 0.74);
+    ctx.globalAlpha = 1;
+  }
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function drawRadar(p, hdg) {
+  const S = radar.width, c = S / 2, rr = c - 8;
+  rctx.clearRect(0, 0, S, S);
+  rctx.fillStyle = "rgba(12,14,18,.58)"; rctx.beginPath(); rctx.arc(c, c, rr, 0, Math.PI * 2); rctx.fill();
+  rctx.strokeStyle = "rgba(244,239,230,.25)"; rctx.lineWidth = 2;
+  rctx.beginPath(); rctx.arc(c, c, rr, 0, Math.PI * 2); rctx.stroke();
+  rctx.beginPath(); rctx.arc(c, c, rr * 0.5, 0, Math.PI * 2); rctx.stroke();
+  if (hdg == null) return;
+  // 視野のくさび（進行方向が上）
+  const half = rad(settings.fov / 2);
+  rctx.fillStyle = "rgba(242,193,78,.18)";
+  rctx.beginPath(); rctx.moveTo(c, c); rctx.arc(c, c, rr, -Math.PI / 2 - half, -Math.PI / 2 + half); rctx.closePath(); rctx.fill();
+  // 北の印
+  const n = rad(-hdg);
+  rctx.fillStyle = "#f0906b";
+  rctx.beginPath(); rctx.arc(c + Math.sin(n) * (rr - 10), c - Math.cos(n) * (rr - 10), 4, 0, Math.PI * 2); rctx.fill();
+  if (!p) return;
+  const maxD = settings.radius * 1000;
+  for (const L of LANDMARKS) {
+    const { dist, bearing } = distBearing(p, L);
+    if (!L.always && dist > maxD) continue;
+    // 距離は対数で圧縮（近くの密集を見やすく）
+    const t = Math.min(1, Math.log10(1 + dist / 300) / Math.log10(1 + maxD / 300));
+    const a = rad(bearing - hdg);
+    const x = c + Math.sin(a) * rr * t, y = c - Math.cos(a) * rr * t;
+    rctx.fillStyle = L.always ? "#f4efe6" : "#f2c14e";
+    rctx.beginPath(); rctx.arc(x, y, 5, 0, Math.PI * 2); rctx.fill();
+  }
+  rctx.fillStyle = "#f4efe6"; rctx.beginPath(); rctx.arc(c, c, 4, 0, Math.PI * 2); rctx.fill();
+}
+
+// ---------- 設定UI ----------
+const panel = document.getElementById("panel");
+function bindRange(id, key, fmt) {
+  const el = document.getElementById(id), v = document.getElementById(id + "-v");
+  el.value = settings[key]; v.textContent = fmt(settings[key]);
+  el.addEventListener("input", () => { settings[key] = Number(el.value); v.textContent = fmt(settings[key]); saveSettings(); });
+}
+bindRange("radius", "radius", x => x + " km");
+bindRange("fov", "fov", x => x + "°");
+bindRange("offset", "offset", x => (x > 0 ? "+" : "") + x + "°");
+const demo = document.getElementById("demo");
+demo.checked = settings.demo;
+demo.addEventListener("change", () => { settings.demo = demo.checked; saveSettings(); });
+document.getElementById("gear").addEventListener("click", () => { panel.classList.add("open"); panel.setAttribute("aria-hidden", "false"); });
+document.getElementById("close").addEventListener("click", () => { panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true"); });
+
+// ---------- 起動 ----------
+document.getElementById("start").addEventListener("click", async () => {
+  const err = document.getElementById("gate-err");
+  err.textContent = "";
+  if (!window.isSecureContext) { err.textContent = "https で開いてください。http ではカメラとセンサーが使えません。"; return; }
+  try { await startSensors(); } catch (e) { err.textContent = e.message; return; }
+  try { await startCamera(); } catch (e) { err.textContent = "カメラを起動できませんでした：" + e.message + "。ブラウザのカメラ許可を確認してください。"; return; }
+  startGeo();
+  document.getElementById("gate").remove();
+  requestAnimationFrame(frame);
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
