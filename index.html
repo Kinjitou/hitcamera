@@ -159,7 +159,7 @@ const LANDMARKS = [
 ];
 
 // ---------- 設定（端末内保存） ----------
-const DEFAULTS = { radius: 20, fov: 50, offset: 0, demo: false };
+const DEFAULTS = { radius: 20, fov: 50, offset: -17, demo: false };
 const settings = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem("lmcam.settings") || "{}"));
 function saveSettings() { localStorage.setItem("lmcam.settings", JSON.stringify(settings)); }
 
